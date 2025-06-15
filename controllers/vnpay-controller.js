@@ -79,6 +79,10 @@ const createPaymentUrl = async (req, res, next) => {
 // ✅ Xử lý IPN (VNPAY gọi server, cập nhật trạng thái)
 const handleIPN = async (req, res, next) => {
     console.log('👉 IPN Callback được gọi!');
+    console.log("👉 req.query:", req.query);
+    console.log("👉 req.originalUrl:", req.originalUrl);
+    console.log("👉 req.url:", req.url);
+
     try {
         const vnp_Params = { ...req.query };
         const secureHash = vnp_Params.vnp_SecureHash;
