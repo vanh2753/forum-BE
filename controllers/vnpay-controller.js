@@ -42,7 +42,7 @@ const createPaymentUrl = async (req, res, next) => {
             vnp_OrderType: 'other',
             vnp_Amount: order.total_price * 100,
             vnp_ReturnUrl: returnUrl,
-            vnp_IpAddr: '127.0.0.1',
+            vnp_IpAddr: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
             vnp_CreateDate: createDate
         };
         console.log(vnp_Params);
