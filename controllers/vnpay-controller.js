@@ -8,16 +8,18 @@ const hashSecret = process.env.VNP_HASH_SECRET;
 const returnUrl = process.env.VNP_RETURN_URL;
 const vnpUrl = process.env.VNP_API_URL;
 const ipnUrl = process.env.VNP_IPN_URL;
-console.log('ceck:', ipnUrl)
 
 function sortObject(obj) {
-    let sorted = {};
-    let keys = Object.keys(obj).sort();
-    for (let key of keys) {
-        sorted[key] = encodeURIComponent(obj[key]).replace(/%20/g, "+");
+    const sorted = {};
+    const keys = Object.keys(obj).sort();
+    for (const key of keys) {
+        sorted[key] = obj[key];
     }
     return sorted;
 }
+
+
+
 
 // ✅ Tạo URL thanh toán
 const createPaymentUrl = async (req, res, next) => {
@@ -36,11 +38,14 @@ const createPaymentUrl = async (req, res, next) => {
         const date = new Date();
         const createDate = moment(date).format('YYYYMMDDHHmmss');
 
+        let ipAddr = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1";
+        if (ipAddr === "::1" || ipAddr === "::ffff:127.0.0.1") ipAddr = "127.0.0.1";
+
         let vnp_Params = {
             vnp_Version: "2.1.0",
             vnp_Command: "pay",
             vnp_TmnCode: tmnCode,
-            vnp_Amount: order.total_price * 100,
+            vnp_Amount: 10000 * 100,
             vnp_CurrCode: "VND",
             vnp_TxnRef: orderId,
             vnp_OrderInfo: `Thanh toan don hang #${orderId}`,
@@ -49,19 +54,27 @@ const createPaymentUrl = async (req, res, next) => {
             vnp_ReturnUrl: returnUrl,
             vnp_IpnUrl: ipnUrl,
             vnp_CreateDate: moment().format("YYYYMMDDHHmmss"),
-            vnp_IpAddr: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1"
+            vnp_IpAddr: ipAddr
         };
 
+        delete vnp_Params['vnp_SecureHash'];
+
         const sortedParams = sortObject(vnp_Params);
-        const signData = qs.stringify(sortedParams, { encode: false });
+        const signData = qs.stringify(sortedParams, { encode: false }); // chuẩn demo
         const hmac = crypto.createHmac('sha512', hashSecret);
         const signed = hmac.update(signData).digest('hex');
 
-        sortedParams.vnp_SecureHash = signed;
+        const signedParams = {
+            ...sortedParams,
+            vnp_SecureHash: signed,
+        };
 
-        const paymentUrl = `${vnpUrl}?${qs.stringify(sortedParams, { encode: false })}`;
+        console.log("Sorted params trước khi ký:", sortedParams);
+        console.log("Dữ liệu để ký:", signData);
+        console.log("Chữ ký tạo ra:", signed);
 
-        console.log("✅ URL Thanh toán:", paymentUrl);
+
+        const paymentUrl = `${vnpUrl}?${qs.stringify(signedParams, { encode: true })}`;
 
         return res.json({
             EC: 0,
@@ -79,9 +92,7 @@ const createPaymentUrl = async (req, res, next) => {
 // ✅ Xử lý IPN (VNPAY gọi server, cập nhật trạng thái)
 const handleIPN = async (req, res, next) => {
     console.log('👉 IPN Callback được gọi!');
-    console.log("👉 req.query:", req.query);
-    console.log("👉 req.originalUrl:", req.originalUrl);
-    console.log("👉 req.url:", req.url);
+    console.log("👉 Full URL Callback:", req.url);
 
     try {
         const vnp_Params = { ...req.query };
