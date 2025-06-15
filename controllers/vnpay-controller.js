@@ -62,6 +62,7 @@ const createPaymentUrl = async (req, res, next) => {
 }
 
 const handleCallback = async (req, res, next) => {
+    console.log('👉 Callback được gọi!');
     try {
         const vnp_Params = req.query;
         const secureHash = vnp_Params.vnp_SecureHash;
@@ -71,14 +72,18 @@ const handleCallback = async (req, res, next) => {
 
         const sortedParams = sortObject(vnp_Params);
         const signData = qs.stringify(sortedParams, { encode: false });
-        const hmac = crypto.createHmac('sha512', hashSecret);
+        const hmac = crypto.createHmac('sha512', process.env.VNP_HASH_SECRET);
         const signed = hmac.update(signData).digest('hex');
+
+        console.log('👉 SignData:', signData);
+        console.log('👉 Chữ ký tự tính:', signed);
+        console.log('👉 Chữ ký từ VNPAY:', secureHash);
 
         if (secureHash !== signed) {
             return res.status(400).send('Chữ ký không hợp lệ');
         }
 
-        const orderId = vnp_Params.vnp_TxnRef;
+        const orderId = vnp_Params.vnp_TxnRef.split('-')[0];
         const rspCode = vnp_Params.vnp_ResponseCode;
 
         const order = await Order.findByPk(orderId);
@@ -93,10 +98,10 @@ const handleCallback = async (req, res, next) => {
             await order.update({ payment_status: 'FAILED' });
             return res.send('Thanh toán thất bại');
         }
+    } catch (error) {
+        next(error);
     }
-    catch (error) {
-        next(error)
-    }
-}
+};
+
 
 module.exports = { createPaymentUrl, handleCallback }
