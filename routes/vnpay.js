@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { createPaymentUrl, handleCallback } = require('../controllers/vnpay-controller')
-const { authenticateToken } = require('../middleware/authenticateToken')
+const { createPaymentUrl, handleIPN, handleReturn } = require('../controllers/vnpay-controller');
 
-router.post('/vnpay/create-payment-url/:orderId', authenticateToken, createPaymentUrl);
-router.get('/vnpay/callback', handleCallback);
+router.get('/create-payment/:orderId', createPaymentUrl);
+router.get('/callback', handleIPN); // <-- IPN URL: VNPAY gọi đến
+router.get('/return', handleReturn); // <-- Return URL: user được redirect về
 
 module.exports = router;
