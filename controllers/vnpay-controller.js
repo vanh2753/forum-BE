@@ -7,39 +7,49 @@ const tmnCode = process.env.VNP_TMNCODE;
 const hashSecret = process.env.VNP_HASH_SECRET;
 const returnUrl = process.env.VNP_RETURN_URL;
 const vnpUrl = process.env.VNP_API_URL;
+const ipnUrl = process.env.VNP_IPN_URL;
+console.log('ceck:', ipnUrl)
 
 function sortObject(obj) {
-    return Object.keys(obj).sort().reduce((acc, key) => {
-        acc[key] = obj[key];
-        return acc;
-    }, {});
+    let sorted = {};
+    let keys = Object.keys(obj).sort();
+    for (let key of keys) {
+        sorted[key] = encodeURIComponent(obj[key]).replace(/%20/g, "+");
+    }
+    return sorted;
 }
 
 // ✅ Tạo URL thanh toán
 const createPaymentUrl = async (req, res, next) => {
     try {
+        console.log("👉 Nhận yêu cầu tạo URL thanh toán cho order:", req.params.orderId);
+
         const orderId = req.params.orderId;
         const order = await Order.findByPk(orderId);
+
         if (!order || order.payment_status !== 'PENDING') {
-            return res.status(400).json({ EC: 1, EM: 'Đơn hàng không hợp lệ' });
+            console.log("❌ Đơn hàng không hợp lệ hoặc đã thanh toán rồi.");
+            return res.status(400).json({ EC: 1, EM: 'Đơn hàng không hợp lệ hoặc đã thanh toán.' });
         }
 
+        // Các bước tạo URL...
         const date = new Date();
         const createDate = moment(date).format('YYYYMMDDHHmmss');
 
-        const vnp_Params = {
-            vnp_Version: '2.1.0',
-            vnp_Command: 'pay',
+        let vnp_Params = {
+            vnp_Version: "2.1.0",
+            vnp_Command: "pay",
             vnp_TmnCode: tmnCode,
-            vnp_Locale: 'vn',
-            vnp_CurrCode: 'VND',
-            vnp_TxnRef: order.id,
-            vnp_OrderInfo: `Thanh toan don hang #${order.id}`,
-            vnp_OrderType: 'other',
             vnp_Amount: order.total_price * 100,
+            vnp_CurrCode: "VND",
+            vnp_TxnRef: orderId,
+            vnp_OrderInfo: `Thanh toan don hang #${orderId}`,
+            vnp_OrderType: "other", // hoặc 'billpayment', 'topup', v.v.
+            vnp_Locale: "vn",
             vnp_ReturnUrl: returnUrl,
-            vnp_IpAddr: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
-            vnp_CreateDate: createDate,
+            vnp_IpnUrl: ipnUrl,
+            vnp_CreateDate: moment().format("YYYYMMDDHHmmss"),
+            vnp_IpAddr: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1"
         };
 
         const sortedParams = sortObject(vnp_Params);
@@ -49,12 +59,22 @@ const createPaymentUrl = async (req, res, next) => {
 
         sortedParams.vnp_SecureHash = signed;
 
-        const paymentUrl = `${vnpUrl}?${qs.stringify(sortedParams, { encode: true })}`;
-        res.json({ EC: 0, EM: 'Tạo URL thành công', DT: paymentUrl });
+        const paymentUrl = `${vnpUrl}?${qs.stringify(sortedParams, { encode: false })}`;
+
+        console.log("✅ URL Thanh toán:", paymentUrl);
+
+        return res.json({
+            EC: 0,
+            EM: 'Tạo URL thành công',
+            DT: paymentUrl
+        });
+
     } catch (error) {
+        console.error("❌ Lỗi tạo URL thanh toán:", error);
         next(error);
     }
 };
+
 
 // ✅ Xử lý IPN (VNPAY gọi server, cập nhật trạng thái)
 const handleIPN = async (req, res, next) => {
